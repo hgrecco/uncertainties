@@ -75,196 +75,200 @@ from uncertainties import __author__, to_affine_scalar, AffineScalarFunc
 # - excluded from standard wrapping by adding their name to
 # no_std_wrapping
 
-# Math functions that have a standard interface: they take
-# one or more float arguments, and return a scalar:
-many_scalars_to_scalar_funcs = []
-
-# Some functions require a specific treatment and must therefore be
-# excluded from standard wrapping.  Functions
-# no_std_wrapping = ['modf', 'frexp', 'ldexp', 'fsum', 'factorial']
-
-# Functions with numerical derivatives:
-num_deriv_funcs = ['fmod', 'gamma', 'isinf', 'isnan',
-                   'lgamma', 'trunc']
-
-# Functions that do not belong in many_scalars_to_scalar_funcs, but
-# that have a version that handles uncertainties:
-non_std_wrapped_funcs = []
-
 # Function that copies the relevant attributes from generalized
 # functions from the math module:
 wraps = functools.partial(functools.update_wrapper,
                           assigned=('__doc__', '__name__'))
 
-########################################
-# Wrapping of math functions:
+def wrap_module(module, wrapped, wrapfun, fixed_derivatives=None):
+    """Wrap a math module to become uncertainties aware.
 
-# Fixed formulas for the derivatives of some functions from the math
-# module (some functions might not be present in all version of
-# Python).  Singular points are not taken into account.  The user
-# should never give "large" uncertainties: problems could only appear
-# if this assumption does not hold.
-
-# Functions not mentioned in _fixed_derivatives have their derivatives
-# calculated numerically.
-
-# Functions that have singularities (possibly at infinity) benefit
-# from analytical calculations (instead of the default numerical
-# calculation) because their derivatives generally change very fast.
-# Even slowly varying functions (e.g., abs()) yield more precise
-# results when differentiated analytically, because of the loss of
-# precision in numerical calculations.
-
-#def log_1arg_der(x):
-#    """
-#    Derivative of log(x) (1-argument form).
-#    """
-#    return 1/x
-
-def log_der0(*args):
+    :param module: the module where new functions are to be inserted.
+    :param wrapped: the wrapped math module.
+    :param wrapfun: a wrapping function that takes two arguments:
+                    the function and its derivative.
+    :param fixed_derivatives: a name to derivative mapping used to
+                              add/override fixed derivatives.
     """
-    Derivative of math.log() with respect to its first argument.
 
-    Works whether 1 or 2 arguments are given.
-    """    
-    if len(args) == 1:
-        return 1/args[0]
-    else:
-        return 1/args[0]/math.log(args[1])  # 2-argument form
+    ########################################
+    # Wrapping of math functions:
 
-    # The following version goes about as fast:
-    
-    ## A 'try' is used for the most common case because it is fast when no
-    ## exception is raised:
-    #try:
-    #    return log_1arg_der(*args)  # Argument number check
-    #except TypeError:
-    #    return 1/args[0]/math.log(args[1])  # 2-argument form
+    # Fixed formulas for the derivatives of some functions from the math
+    # module (some functions might not be present in all version of
+    # Python).  Singular points are not taken into account.  The user
+    # should never give "large" uncertainties: problems could only appear
+    # if this assumption does not hold.
 
-erf_coef = 2/math.sqrt(math.pi)  # Optimization for erf()
+    # Functions not mentioned in _fixed_derivatives have their derivatives
+    # calculated numerically.
 
-fixed_derivatives = {
-    # In alphabetical order, here:
-    'acos': [lambda x: -1/math.sqrt(1-x**2)],
-    'acosh': [lambda x: 1/math.sqrt(x**2-1)],
-    'asin': [lambda x: 1/math.sqrt(1-x**2)],
-    'asinh': [lambda x: 1/math.sqrt(1+x**2)],
-    'atan': [lambda x: 1/(1+x**2)],
-    'atan2': [lambda y, x: x/(x**2+y**2),  # Correct for x == 0
-              lambda y, x: -y/(x**2+y**2)],  # Correct for x == 0
-    'atanh': [lambda x: 1/(1-x**2)],
-    'ceil': [lambda x: 0],
-    'copysign': [lambda x, y: (1 if x >= 0 else -1) * math.copysign(1, y),
-                 lambda x, y: 0],
-    'cos': [lambda x: -math.sin(x)],
-    'cosh': [math.sinh],
-    'degrees': [lambda x: math.degrees(1)],
-    'erf': [lambda x: exp(-x**2)*erf_coef],
-    'erfc': [lambda x: -exp(-x**2)*erf_coef],
-    'exp': [math.exp],
-    'expm1': [math.exp],
-    'fabs': [lambda x: 1 if x >= 0 else -1],
-    'floor': [lambda x: 0],
-    'hypot': [lambda x, y: x/math.hypot(x, y),
-              lambda x, y: y/math.hypot(x, y)],
-    'log': [log_der0,
-            lambda x, y: -math.log(x, y)/y/math.log(y)],
-    'log10': [lambda x: 1/x/math.log(10)],
-    'log1p': [lambda x: 1/(1+x)],
-    'pow': [lambda x, y:
-                0. if y == 0
-                else y*math.pow(x, y-1)  if x != 0 or y % 1 == 0
-                else float('nan'),
-            lambda x, y:
-                0. if (x == 0) and (y > 0)
-                else math.log(x) * math.pow(x, y)],
-    'radians': [lambda x: math.radians(1)],
-    'sin': [math.cos],
-    'sinh': [math.cosh],
-    'sqrt': [lambda x: 0.5/math.sqrt(x)],
-    'tan': [lambda x: 1+math.tan(x)**2],
-    'tanh': [lambda x: 1-math.tanh(x)**2]
-    }
+    # Functions that have singularities (possibly at infinity) benefit
+    # from analytical calculations (instead of the default numerical
+    # calculation) because their derivatives generally change very fast.
+    # Even slowly varying functions (e.g., abs()) yield more precise
+    # results when differentiated analytically, because of the loss of
+    # precision in numerical calculations.
 
-# Many built-in functions in the math module are wrapped with a
-# version which is uncertainty aware:
+    #def log_1arg_der(x):
+    #    """
+    #    Derivative of log(x) (1-argument form).
+    #    """
+    #    return 1/x
+
+    def log_der0(*args):
+        """
+        Derivative of math.log() with respect to its first argument.
+
+        Works whether 1 or 2 arguments are given.
+        """
+        if len(args) == 1:
+            return 1/args[0]
+        else:
+            return 1/args[0]/wrapped.log(args[1])  # 2-argument form
+
+        # The following version goes about as fast:
+
+        ## A 'try' is used for the most common case because it is fast when no
+        ## exception is raised:
+        #try:
+        #    return log_1arg_der(*args)  # Argument number check
+        #except TypeError:
+        #    return 1/args[0]/wrapped.log(args[1])  # 2-argument form
+
+    erf_coef = 2/wrapped.sqrt(wrapped.pi)  # Optimization for erf()
+
+    fixed_derivatives = {
+        # In alphabetical order, here:
+        'acos': [lambda x: -1/wrapped.sqrt(1-x**2)],
+        'acosh': [lambda x: 1/wrapped.sqrt(x**2-1)],
+        'asin': [lambda x: 1/wrapped.sqrt(1-x**2)],
+        'asinh': [lambda x: 1/wrapped.sqrt(1+x**2)],
+        'atan': [lambda x: 1/(1+x**2)],
+        'atan2': [lambda y, x: x/(x**2+y**2),  # Correct for x == 0
+                  lambda y, x: -y/(x**2+y**2)],  # Correct for x == 0
+        'atanh': [lambda x: 1/(1-x**2)],
+        'ceil': [lambda x: 0],
+        'copysign': [lambda x, y: (1 if x >= 0 else -1) * wrapped.copysign(1, y),
+                     lambda x, y: 0],
+        'cos': [lambda x: -wrapped.sin(x)],
+        'cosh': [wrapped.sinh],
+        'degrees': [lambda x: wrapped.degrees(1)],
+        'erf': [lambda x: wrapped.exp(-x**2)*erf_coef],
+        'erfc': [lambda x: -wrapped.exp(-x**2)*erf_coef],
+        'exp': [wrapped.exp],
+        'expm1': [wrapped.exp],
+        'fabs': [lambda x: 1 if x >= 0 else -1],
+        'floor': [lambda x: 0],
+        'hypot': [lambda x, y: x/wrapped.hypot(x, y),
+                  lambda x, y: y/wrapped.hypot(x, y)],
+        'log': [log_der0,
+                lambda x, y: -wrapped.log(x, y)/y/wrapped.log(y)],
+        'log10': [lambda x: 1/x/wrapped.log(10)],
+        'log1p': [lambda x: 1/(1+x)],
+        'pow': [lambda x, y:
+                    0. if y == 0
+                    else y*wrapped.pow(x, y-1)  if x != 0 or y % 1 == 0
+                    else float('nan'),
+                lambda x, y:
+                    0. if (x == 0) and (y > 0)
+                    else wrapped.log(x) * wrapped.pow(x, y)],
+        'radians': [lambda x: wrapped.radians(1)],
+        'sin': [wrapped.cos],
+        'sinh': [wrapped.cosh],
+        'sqrt': [lambda x: 0.5/wrapped.sqrt(x)],
+        'tan': [lambda x: 1+wrapped.tan(x)**2],
+        'tanh': [lambda x: 1-wrapped.tanh(x)**2]
+        }
+
+    if fixed_derivatives:
+        fixed_derivatives.update(fixed_derivatives)
+
+    # Functions with numerical derivatives:
+    num_deriv_funcs = ['fmod', 'gamma', 'isinf', 'isnan', 'lgamma', 'trunc']
+
+    exported = []
+
+    # Many built-in functions in the math module are wrapped with a
+    # version which is uncertainty aware:
+
+    # for (name, attr) in vars(math).items():
+    for name in dir(wrapped):
+
+        if name in fixed_derivatives:  # Priority to functions in fixed_derivatives
+            derivatives = fixed_derivatives[name]
+        elif name in num_deriv_funcs:
+            # Functions whose derivatives are calculated numerically by
+            # this module fall here (isinf, fmod,...):
+            derivatives = []  # Means: numerical calculation required
+        else:
+            continue  # 'name' not wrapped by this module (__doc__, e, etc.)
+
+        # Errors during the calculation of the derivatives are converted
+        # to a NaN result: it is assumed that a mathematical calculation
+        # that cannot be calculated indicates a non-defined derivative
+        # (the derivatives in fixed_derivatives must be written this way):
+        derivatives = map(uncertainties.nan_if_exception, derivatives)
+
+        func = getattr(wrapped, name)
+
+        setattr(module, name, wraps(wrapfun(func, derivatives), func))
+
+        exported.append(name)
+
+    ###############################################################################
+
+    ########################################
+    # Special cases: some of the functions from no_std_wrapping:
+
+    ##########
+    # The math.factorial function is not converted to an uncertainty-aware
+    # function, because it does not handle non-integer arguments: it does
+    # not make sense to give it an argument with a numerical error
+    # (whereas this would be relevant for the gamma function).
+
+    ##########
+
+    # fsum takes a single argument, which cannot be differentiated.
+    # However, each of the arguments inside this single list can
+    # be a variable.  We handle this in a specific way:
+
+    if sys.version_info[:2] >= (2, 6):
+
+        # For drop-in compatibility with the math module:
+        setattr(module, 'factorial', wrapped.factorial)
+        exported.append('factorial')
+
+
+        # We wrap math.fsum
+
+        original_func = wrapped.fsum  # For optimization purposes
+
+        # The function below exists so that temporary variables do not
+        # pollute the module namespace:
+        def wrapped_fsum():
+            """
+            Returns an uncertainty-aware version of math.fsum, which must
+            be contained in _original_func.
+            """
+
+            # The fsum function is flattened, in order to use the
+            # wrap() wrapper:
+
+            flat_fsum = lambda *args: original_func(args)
+
+            flat_fsum_wrap = wrapfun(
+                flat_fsum, itertools.repeat(lambda *args: 1))
+
+            return wraps(lambda arg_list: flat_fsum_wrap(*arg_list),
+                         original_func)
+
+        setattr(module, 'fsum', wrapped_fsum())
+        exported.append('fsum')
+
+    return exported
 
 this_module = sys.modules[__name__]
-
-# for (name, attr) in vars(math).items():
-for name in dir(math):
-
-    if name in fixed_derivatives:  # Priority to functions in fixed_derivatives
-        derivatives = fixed_derivatives[name]
-    elif name in num_deriv_funcs:
-        # Functions whose derivatives are calculated numerically by
-        # this module fall here (isinf, fmod,...):
-        derivatives = []  # Means: numerical calculation required
-    else:
-        continue  # 'name' not wrapped by this module (__doc__, e, etc.)
-
-    # Errors during the calculation of the derivatives are converted
-    # to a NaN result: it is assumed that a mathematical calculation
-    # that cannot be calculated indicates a non-defined derivative
-    # (the derivatives in fixed_derivatives must be written this way):
-    derivatives = map(uncertainties.nan_if_exception, derivatives)
-    
-    func = getattr(math, name)
-    
-    setattr(this_module, name,
-            wraps(uncertainties.wrap(func, derivatives), func))
-    
-    many_scalars_to_scalar_funcs.append(name)
-
-###############################################################################
-    
-########################################
-# Special cases: some of the functions from no_std_wrapping:
-
-##########
-# The math.factorial function is not converted to an uncertainty-aware
-# function, because it does not handle non-integer arguments: it does
-# not make sense to give it an argument with a numerical error
-# (whereas this would be relevant for the gamma function).
-
-##########
-
-# fsum takes a single argument, which cannot be differentiated.
-# However, each of the arguments inside this single list can
-# be a variable.  We handle this in a specific way:
-
-if sys.version_info[:2] >= (2, 6):    
-
-    # For drop-in compatibility with the math module:
-    factorial = math.factorial
-    non_std_wrapped_funcs.append('factorial')
-
-
-    # We wrap math.fsum
-
-    original_func = math.fsum  # For optimization purposes
-
-    # The function below exists so that temporary variables do not
-    # pollute the module namespace:
-    def wrapped_fsum():
-        """
-        Returns an uncertainty-aware version of math.fsum, which must
-        be contained in _original_func.
-        """
-
-        # The fsum function is flattened, in order to use the
-        # wrap() wrapper:
-
-        flat_fsum = lambda *args: original_func(args)
-
-        flat_fsum_wrap = uncertainties.wrap(
-            flat_fsum, itertools.repeat(lambda *args: 1))
-
-        return wraps(lambda arg_list: flat_fsum_wrap(*arg_list),
-                     original_func)
-
-    fsum = wrapped_fsum()
-    non_std_wrapped_funcs.append('fsum')
 
 ##########
 @uncertainties.set_doc(math.modf.__doc__)
@@ -273,11 +277,11 @@ def modf(x):
     Version of modf that works for numbers with uncertainty, and also
     for regular numbers.
     """
-    
+
     # The code below is inspired by uncertainties.wrap().  It is
     # simpler because only 1 argument is given, and there is no
     # delegation to other functions involved (as for __mul__, etc.).
-    
+
     aff_func = to_affine_scalar(x)
 
     (frac_part, int_part) = math.modf(aff_func.nominal_value)
@@ -290,8 +294,6 @@ def modf(x):
         # This function was not called with an AffineScalarFunc
         # argument: there is no need to return numbers with uncertainties:
         return (frac_part, int_part)
-    
-many_scalars_to_scalar_funcs.append('modf')
 
 @uncertainties.set_doc(math.ldexp.__doc__)
 def ldexp(x, y):
@@ -322,7 +324,6 @@ def ldexp(x, y):
         # value of x coerced to a difference type [int->float, for
         # instance]):
         return math.ldexp(x, y)
-many_scalars_to_scalar_funcs.append('ldexp')
 
 @uncertainties.set_doc(math.frexp.__doc__)
 def frexp(x):
@@ -354,10 +355,11 @@ def frexp(x):
         # This function was not called with an AffineScalarFunc
         # argument: there is no need to return numbers with uncertainties:
         return math.frexp(x)
-non_std_wrapped_funcs.append('frexp')
 
 ###############################################################################
 # Exported functions:
 
-__all__ = many_scalars_to_scalar_funcs + non_std_wrapped_funcs
+__all__ = wrap_module(this_module, math, uncertainties.wrap) + \
+          ['modf', 'ldexp', 'frexp']
+
 

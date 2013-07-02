@@ -30,7 +30,9 @@ def test_fixed_derivatives_math_funcs():
     This comparison is useful for derivatives that are analytical.
     """
 
-    for name in umath.many_scalars_to_scalar_funcs:
+    for name in umath.__all__:
+        if name in ('factorial', 'fsum', 'frexp'):
+            continue
         # print "Checking %s..." % name
         func = getattr(umath, name)
         # Numerical derivatives of func: the nominal value of func() results
